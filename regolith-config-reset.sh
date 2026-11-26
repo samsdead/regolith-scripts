@@ -1,19 +1,34 @@
 #!/bin/sh
 
-DEST_DIR=$HOME/regolith-config-backup-`date +%Y%m%d%H%M%S`
+set -eu
+: "${HOME:?Set HOME before resetting Regolith configuration.}"
 
-mkdir -p $DEST_DIR
+# Record the paths once so deletion uses the same paths as the backup.
+set --
+for config in "$HOME"/.Xresources.d "$HOME"/.Xresources-regolith* \
+              "$HOME"/.config/i3-regolith "$HOME"/.config/i3xrocks; do
+    if [ -e "$config" ] || [ -L "$config" ]; then
+        set -- "$@" "$config"
+    fi
+done
 
-cp -ra $HOME/.Xresources.d $DEST_DIR
-cp -ra $HOME/.Xresources-regolith* $DEST_DIR
-cp -ra $HOME/.config/i3-regolith $DEST_DIR
-cp -ra $HOME/.config/i3xrocks $DEST_DIR
+if [ "$#" -eq 0 ]; then
+    echo "No Regolith configuration files to reset."
+    exit 0
+fi
 
-echo "Copied all Regolith configuration files to: $DEST_DIR"
+umask 077
+timestamp=$(date +%Y%m%d%H%M%S)
+backup=$(mktemp -d -- "$HOME/regolith-config-backup-$timestamp-XXXXXXXX")
+if ! cp -a -- "$@" "$backup"; then
+    printf 'Backup failed. Configuration was preserved. Partial backup: %s\n' "$backup" >&2
+    exit 1
+fi
 
-rm -Rf $HOME/.config/i3-regolith
-rm -Rf $HOME/.config/i3xrocks
-rm -Rf $HOME/.Xresources-regolith*
-rm -Rf $HOME/.Xresources.d
+printf 'Copied all Regolith configuration files to: %s\n' "$backup"
+if ! rm -rf -- "$@"; then
+    printf 'Reset incomplete. The configuration backup is at: %s\n' "$backup" >&2
+    exit 1
+fi
 
 echo "Removed Regolith configuration files.  Please log back in to reload, or run regolith-config-init.sh."
